@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adventure Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 20px;
+            padding: 20px;
+            max-width: 600px;
+            background-color: #333;
+            color: #fefefe;
+        }
+        #game-output {
+            white-space: pre-wrap;
+            background-color: #222;
+            padding: 20px;
+            border-radius: 10px;
+            min-height: 200px;
+        }
+        button {
+            background-color: #5cdb95;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #379683;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .modal-content {
+            background-color: #444;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        .progress-container {
+            width: 100%;
+            background-color: #ddd;
+            height: 30px;
+            margin-top: 20px;
+        }
+        .progress-bar {
+            width: 0%;
+            height: 30px;
+            background-color: #4CAF50;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Adventure Game</h1>
+<div id="game-output">Welcome to the Text Adventure Game!</div>
+<br>
+<div id="buttons"></div>
+
+<!-- Modal for the Stats Page -->
+<div id="stats-modal" class="modal">
+    <div class="modal-content">
+        <h2>Player Stats</h2>
+        <div id="stats-content"></div>
+        <br>
+        <button onclick="closeStats()">Close Stats</button>
+    </div>
+</div>
+
+<!-- Loading Screen -->
+<div id="loading-screen" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h2>Loading Assets...</h2>
+        <div class="progress-container">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Save Game Section -->
+<textarea id="save-string" readonly></textarea>
+
+<script>
+    let level = 1;
+    let gold = 0;
+    let topGoblinCount = 0;
+    let topGoblinMax = 3;  // Only appears 3 times between level 21 and 50
+    let shopInterval = randomShopLevel();
+
+    let player = {
+        maxHealth: 100,
+        health: 100,
+        attack: 10,
+        defense: 0,
+        healingPotions: 5,  // Start with 5 health potions
+        swordDamage: 10,
+        armorPoints: 0,
+        gold: 0
+    };
+
+    let goblin = {};
+    let assetsLoaded = false;
+
+    const output = document.getElementById("game-output");
+    const buttonsDiv = document.getElementById("buttons");
+    const statsModal = document.getElementById("stats-modal");
+    const statsContent = document.getElementById("stats-content");
+    const loadingScreen = document.getElementById("loading-screen"); // Define loading screen
+    const progressBar = document.getElementById("progress-bar"); // Define progress bar
+    const saveStringTextarea = document.getElementById("save-string");
+
+    // Function to update the game output text
+    function updateOutput(message) {
+        output.innerText = message;
+    }
+
+    // Function to clear all buttons
+    function clearButtons() {
+        buttonsDiv.innerHTML = '';
+    }
+
+    // Function to create a button dynamically
+    function createButton(text, onClick) {
+        const button = document.createElement("button");
+        button.innerText = text;
+        button.onclick = onClick;
+        buttonsDiv.appendChild(button);
+    }
+
+    // Initial start screen
+    function startScreen() {
+        updateOutput("Welcome to the Text Adventure Game!\nChoose an option below to get started.");
+        clearButtons();
+        createButton("Start Game", showLoadingScreen);
+        createButton("View Credits", viewCredits);
+        createButton("Load Game", loadGamePrompt);
+        createButton("Exit Game", exitGame);
+    }
+
+    // Function to simulate loading assets and show progress
+    function showLoadingScreen() {
+        loadingScreen.style.display = "block";
+        let width = 0;
+        let assets = ["Loading Goblins", "Loading Player Stats", "Loading Scenarios", "Loading Shop Items", "Finalizing Assets"];
+
+        function loadAsset(assetIndex) {
+            if (assetIndex < assets.length) {
+                updateOutput(assets[assetIndex]);
+                width += 20;  // Each asset increases progress by 20%
+                progressBar.style.width = width + "%";
+                setTimeout(() => {
+                    loadAsset(assetIndex + 1);
+                }, 1500);  // Simulate each asset taking 1.5 seconds to load
+            } else {
+                loadingComplete();
+            }
+        }
+
+        loadAsset(0);
+    }
+
+    // Called when all assets are loaded
+    function loadingComplete() {
+        assetsLoaded = true;
+        setTimeout(() => {
+            loadingScreen.style.display = "none";
+            startGame();
+        }, 500);  // Short delay to let the bar finish
+    }
+
+    function startGame() {
+        if (assetsLoaded) {
+            level = 1;
+            gold = 0;
+            topGoblinCount = 0;
+            shopInterval = randomShopLevel();
+            resetPlayerStats();  // Reset player stats when game starts
+            randomScenario();
+        }
+    }
+
+    // Function to reset the player's stats
+    function resetPlayerStats() {
+        player.maxHealth = 100;
+        player.health = player.maxHealth;
+        player.attack = 10;
+        player.defense = 0;
+        player.swordDamage = 10;
+        player.armorPoints = 0;
+        player.healingPotions = 5;  // Start with 5 healing potions
+        player.gold = 0;
+    }
+
+    // Save the game state and generate a save code
+    function saveGame() {
+        const gameState = {
+            player: { ...player },
+            goblin: { ...goblin },
+            level,
+            gold,
+            topGoblinCount,
+            topGoblinMax,
+            shopInterval
+        };
+        const saveString = btoa(JSON.stringify(gameState));  // Encode the game state as base64
+        saveStringTextarea.value = saveString;
+        updateOutput("Game saved! Copy the code below to resume later.");
+    }
+
+    // Load the game state from a pasted save code
+    function loadGame(saveString) {
+        try {
+            const gameState = JSON.parse(atob(saveString));  // Decode the base64 string
+            player = { ...gameState.player };
+            goblin = { ...gameState.goblin };
+            level = gameState.level;
+            gold = gameState.gold;
+            topGoblinCount = gameState.topGoblinCount;
+            topGoblinMax = gameState.topGoblinMax;
+            shopInterval = gameState.shopInterval;
+            updateOutput("Game loaded! Continue your adventure.");
+            randomScenario();
+        } catch (error) {
+            updateOutput("Invalid save code. Please try again.");
+        }
+    }
+
+    // Load game prompt for user to input a save code
+    function loadGamePrompt() {
+        const saveString = prompt("Paste the saved game code here:");
+        if (saveString) {
+            loadGame(saveString);
+        }
+    }
+
+    // Function to view credits
+    function viewCredits() {
+        updateOutput("Text Adventure Game with Upgrades, Shop, and Loading Screen\nDeveloped by: Your Name\nSpecial thanks to all adventurers!");
+        clearButtons();
+        createButton("Back to Start Screen", startScreen);
+    }
+
+    // Simulated exit game
+    function exitGame() {
+        updateOutput("Thanks for playing! To restart, refresh the page.");
+        clearButtons();
+    }
+
+    // Function to randomly select a scenario and encounter
+    function randomScenario() {
+        if (level === shopInterval) {
+            showShop();
+            shopInterval = randomShopLevel();  // Set the next shop interval
+        } else {
+            if (level <= 20) {
+                updateOutput(`You keep traveling and find a goblin to fight.\n\nWhat will you do?`);
+                generateGoblin(50, 8, 4);  // Regular goblin for levels 1-20
+            } else if (level > 20 && level <= 50) {
+                if (topGoblinCount < topGoblinMax && Math.random() < 0.3) {
+                    updateOutput(`You keep traveling and encounter a Top Goblin!\n\nWhat will you do?`);
+                    generateGoblin(200, 20, 50);  // Top Goblin for levels 21-50
+                    topGoblinCount++;
+                } else {
+                    updateOutput(`You keep traveling and find a regular goblin to fight.\n\nWhat will you do?`);
+                    generateGoblin(80, 8, 4);
+                }
+            }
+            showCombatOptions();  // Call to show combat options
+        }
+    }
+
+    // Generate goblin stats based on the current level and parameters
+    function generateGoblin(health, attack, coins) {
+        goblin = {
+            maxHealth: health,
+            health: health,
+            attack: attack,
+            coins: coins
+        };
+    }
+
+    // Increment level after completing a scenario
+    function incrementLevel() {
+        level++;
+        updateOutput(`You advance to level ${level}!`);
+    }
+
+    // Show the shop
+    function showShop() {
+        updateOutput(`Welcome to the Shop! You have ${player.gold} gold.\n\nWhat would you like to buy?`);
+        clearButtons();
+        createButton("Buy Healing Potion (10 gold)", buyHealingPotion);
+        createButton("Buy Ultra Healing Potion (100 gold)", buyUltraHealingPotion);
+
+        createButton("Buy Wood Sword (5 gold)", buyWoodSword);
+        createButton("Buy Stone Sword (20 gold)", buyStoneSword);
+        createButton("Buy Iron Sword (50 gold)", buyIronSword);
+        createButton("Buy Gold Sword (100 gold)", buyGoldSword);
+        createButton("Buy Platinum Sword (200 gold)", buyPlatinumSword);
+        createButton("Buy Diamond Sword (500 gold)", buyDiamondSword);
+        createButton("Buy Obsidian Sword (1000 gold)", buyObsidianSword);
+
+        createButton("Buy Leather Armor (10 gold)", buyLeatherArmor);
+        createButton("Buy Chain Armor (20 gold)", buyChainArmor);
+        createButton("Buy Steel Armor (50 gold)", buySteelArmor);
+        createButton("Buy Gold Armor (100 gold)", buyGoldArmor);
+        createButton("Buy Diamond Armor (200 gold)", buyDiamondArmor);
+        createButton("Buy Obsidian Armor (500 gold)", buyObsidianArmor);
+
+        createButton("Leave the Shop", randomScenario);
+        createButton("View Stats", openStats);  // Add View Stats button
+        createButton("Save Game", saveGame);  // Add Save Game button
+    }
+
+    // Buy items in the shop
+    function buyHealingPotion() {
+        if (player.gold >= 10) {
+            player.gold -= 10;
+            player.healingPotions++;
+            updateOutput(`You bought a healing potion! You now have ${player.healingPotions} potions. Current gold: ${player.gold}`);
+        } else {
+            updateOutput("You don't have enough gold to buy a healing potion.");
+        }
+        showShop();
+    }
+
+    function buyUltraHealingPotion() {
+        if (player.gold >= 100) {
+            player.gold -= 100;
+            player.health = Math.min(player.maxHealth, player.health + 100);
+            updateOutput(`You bought an Ultra Healing Potion! You now have ${player.health} health. Current gold: ${player.gold}`);
+        } else {
+            updateOutput("You don't have enough gold to buy an Ultra Healing Potion.");
+        }
+        showShop();
+    }
+
+    // Buying Swords
+    function buyWoodSword() {
+        buySword(5, "Wood Sword", 5);
+    }
+
+    function buyStoneSword() {
+        buySword(20, "Stone Sword", 10);
+    }
+
+    function buyIronSword() {
+        buySword(50, "Iron Sword", 20);
+    }
+
+    function buyGoldSword() {
+        buySword(100, "Gold Sword", 50);
+    }
+
+    function buyPlatinumSword() {
+        buySword(200, "Platinum Sword", 100);
+    }
+
+    function buyDiamondSword() {
+        buySword(500, "Diamond Sword", 200);
+    }
+
+    function buyObsidianSword() {
+        buySword(1000, "Obsidian Sword", 500);
+    }
+
+    function buySword(cost, swordName, damage) {
+        if (player.gold >= cost) {
+            player.gold -= cost;
+            player.swordDamage = damage;
+            updateOutput(`You bought a ${swordName}. Your attack damage is now ${damage}. Current gold: ${player.gold}`);
+        } else {
+            updateOutput(`You don't have enough gold to buy a ${swordName}.`);
+        }
+        showShop();
+    }
+
+    // Buying Armor
+    function buyLeatherArmor() {
+        buyArmor(10, "Leather Armor", 20);
+    }
+
+    function buyChainArmor() {
+        buyArmor(20, "Chain Armor", 30);
+    }
+
+    function buySteelArmor() {
+        buyArmor(50, "Steel Armor", 50);
+    }
+
+    function buyGoldArmor() {
+        buyArmor(100, "Gold Armor", 75);
+    }
+
+    function buyDiamondArmor() {
+        buyArmor(200, "Diamond Armor", 100);
+    }
+
+    function buyObsidianArmor() {
+        buyArmor(500, "Obsidian Armor", 200);
+    }
+
+    function buyArmor(cost, armorName, armorPoints) {
+        if (player.gold >= cost) {
+            player.gold -= cost;
+            player.armorPoints = armorPoints;
+            updateOutput(`You bought ${armorName}. Your armor is now ${armorPoints} points. Current gold: ${player.gold}`);
+        } else {
+            updateOutput(`You don't have enough gold to buy ${armorName}.`);
+        }
+        showShop();
+    }
+
+    // Random shop interval between 5 and 20 levels
+    function randomShopLevel() {
+        return level + Math.floor(Math.random() * 16) + 5;
+    }
+
+    // Combat and other game functions...
+    function showCombatOptions() {
+        clearButtons();
+        createButton("Attack", playerAttack);
+        createButton("Defend", playerDefend);
+        if (player.healingPotions > 0) {
+            createButton(`Heal (${player.healingPotions} left)`, playerHeal);
+        }
+        createButton("View Stats", openStats);  // Add View Stats during combat
+        createButton("Save Game", saveGame);  // Add Save Game during combat
+        updateCombatUI();
+    }
+
+    // Combat UI and health bar update
+    function updateCombatUI() {
+        const playerHealthBar = generateHealthBar(player.health, player.maxHealth);
+        const goblinHealthBar = generateHealthBar(goblin.health, goblin.maxHealth);
+
+        updateOutput(
+            `You encounter a goblin!\n\n` +
+            `Player Health: ${player.health}/${player.maxHealth} ${playerHealthBar}\n` +
+            `Goblin Health: ${goblin.health}/${goblin.maxHealth} ${goblinHealthBar}\n\n` +
+            `What will you do?`
+        );
+    }
+
+    // Function to generate a text-based health bar
+    function generateHealthBar(currentHealth, maxHealth) {
+        const barLength = 20;  // Number of characters in the health bar
+        const healthPercentage = currentHealth / maxHealth;
+        const filledLength = Math.floor(barLength * healthPercentage);
+        const emptyLength = barLength - filledLength;
+        const filledBar = "█".repeat(filledLength);
+        const emptyBar = "░".repeat(emptyLength);
+
+        return `[${filledBar}${emptyBar}]`;
+    }
+
+    // Player attacks the goblin
+    function playerAttack() {
+        if (goblin.health > 0 && player.health > 0) {
+            let damage = player.swordDamage;
+            goblin.health -= damage;
+            updateOutput(`You attack the goblin and deal ${damage} damage!\nGoblin Health: ${goblin.health}/${goblin.maxHealth}`);
+            if (goblin.health <= 0) {
+                updateOutput("You have defeated the goblin!\nYou earned " + goblin.coins + " gold.");
+                player.gold += goblin.coins;
+                incrementLevel();  // Increment level after combat
+                clearButtons();
+                createButton("Continue", randomScenario);
+                createButton("View Stats", openStats);  // Add View Stats option
+                createButton("Save Game", saveGame);  // Add Save Game button
+            } else {
+                goblinAttack();
+            }
+        }
+    }
+
+    // Goblin attacks the player
+    function goblinAttack() {
+        let damage = goblin.attack - player.armorPoints;
+        damage = damage > 0 ? damage : 1;  // Ensure at least 1 damage is done
+        player.health -= damage;
+        updateOutput(`The goblin attacks and deals ${damage} damage!\nYour Health: ${player.health}/${player.maxHealth}`);
+        if (player.health <= 0) {
+            updateOutput("You were defeated by the goblin... Game Over!");
+            clearButtons();
+            createButton("Restart", startScreen);
+        } else {
+            showCombatOptions();
+        }
+    }
+
+    // Player defends, dealing 5 damage to the goblin and taking no damage
+    function playerDefend() {
+        let damageToGoblin = 5;  // Deal 5 damage to the goblin
+        goblin.health -= damageToGoblin;
+
+        updateOutput(`You defend! The goblin takes ${damageToGoblin} damage and deals no damage to you.\nGoblin Health: ${goblin.health}/${goblin.maxHealth}`);
+        
+        if (goblin.health <= 0) {
+            updateOutput("You have defeated the goblin!\nYou earned " + goblin.coins + " gold.");
+            player.gold += goblin.coins;
+            incrementLevel();  // Increment level after combat
+            clearButtons();
+            createButton("Continue", randomScenario);
+            createButton("View Stats", openStats);  // Add View Stats option
+            createButton("Save Game", saveGame);  // Add Save Game button
+        } else {
+            showCombatOptions();  // Continue the combat
+        }
+    }
+
+    // Player heals using a potion
+    function playerHeal() {
+        if (player.healingPotions > 0) {
+            player.health = Math.min(player.maxHealth, player.health + 50);  // Heal 50 HP
+            player.healingPotions--;
+            updateOutput(`You used a healing potion. Your health is now ${player.health}/${player.maxHealth}.`);
+        } else {
+            updateOutput("You have no healing potions left!");
+        }
+        showCombatOptions();
+    }
+
+    // Open the stats modal
+    function openStats() {
+        statsContent.innerHTML = `
+            <p>Level: ${level}</p>
+            <p>Health: ${player.health}/${player.maxHealth}</p>
+            <p>Attack: ${player.attack}</p>
+            <p>Sword Damage: ${player.swordDamage}</p>
+            <p>Armor Points: ${player.armorPoints}</p>
+            <p>Defense: ${player.defense}</p>
+            <p>Healing Potions: ${player.healingPotions}</p>
+            <p>Gold: ${player.gold}</p>
+        `;
+        statsModal.style.display = "block";
+    }
+
+    // Close the stats modal
+    function closeStats() {
+        statsModal.style.display = "none";
+    }
+
+    // Start the game with the start screen
+    startScreen();
+</script>
+
+</body>
+</html>
